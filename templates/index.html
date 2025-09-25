@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>野球監督シミュレーション</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- ナビゲーション -->
+        <nav class="nav-bar">
+            <button class="nav-btn" data-target="home-page">ホーム</button>
+            <button class="nav-btn" data-target="order-page">オーダー決定</button>
+            <button class="nav-btn" data-target="schedule-page">日程進行</button>
+        </nav>
+
+        <!-- ホーム画面 -->
+        <div id="home-page" class="page-section active">
+            <h1 class="page-title">ホーム</h1>
+            <p>ようこそ、監督！</p>
+            <p>今シーズンの采配でチームを優勝に導きましょう。</p>
+        </div>
+
+        <!-- オーダー決定画面 -->
+        <div id="order-page" class="page-section">
+            <h1 class="page-title">オーダー決定</h1>
+            <div id="order-selection">
+                <h3>打者スタメン</h3>
+                <div id="batter-order-container"></div>
+                <br>
+                <h3>先発投手</h3>
+                <div id="pitcher-selection-container"></div>
+            </div>
+            <button id="submit-order-btn">オーダーを決定</button>
+        </div>
+
+        <!-- 日程進行画面 -->
+        <div id="schedule-page" class="page-section">
+            <h1 class="page-title">日程進行</h1>
+            <div id="schedule-display">
+                <h3>試合スケジュール</h3>
+                <ul id="game-schedule"></ul>
+                <p>※Flaskから取得した試合データを表示します。</p>
+            </div>
+            <div id="ranking-display">
+                <h3>リーグ順位</h3>
+                <ol id="league-ranking"></ol>
+                <p>※Flaskから取得した順位データを表示します。</p>
+            </div>
+            <button id="advance-day-btn">1日進める</button>
+        </div>
+
+    </div>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
