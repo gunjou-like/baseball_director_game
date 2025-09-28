@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // 各ページ固有の初期化ロジック
         if (pageId === 'order-page') {
             renderOrderPage();
+        } else if (pageId === 'schedule-page') {
+            // 日程進行画面に移動した際に、初期化ロジックがあればここに追加
         }
     };
 
@@ -25,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const pitcherPlayers = Object.values(players).filter(p => p.is_pitcher);
 
         // 打者スタメンのUIを動的に生成
-        batterOrderContainer.innerHTML = ''; // コンテナをクリア
+        batterOrderContainer.innerHTML = '';
         for (let i = 1; i <= 9; i++) {
             const group = document.createElement('div');
             group.classList.add('player-select-group');
@@ -43,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // 先発投手のUIを動的に生成
-        pitcherSelectionContainer.innerHTML = ''; // コンテナをクリア
+        pitcherSelectionContainer.innerHTML = '';
         const group = document.createElement('div');
         group.classList.add('player-select-group');
         group.innerHTML = `<label for="pitcher">先発</label><select id="pitcher"></select>`;
@@ -59,6 +61,26 @@ document.addEventListener('DOMContentLoaded', () => {
         pitcherSelectionContainer.appendChild(group);
 
         console.log("オーダー決定画面のUIを生成しました。");
+    };
+
+    // 試合を進行する関数
+    const advanceDay = async () => {
+        console.log("1日進めます。試合結果を生成中...");
+        const scheduleDisplay = document.getElementById('game-schedule');
+        
+        try {
+            const response = await fetch('/api/simulate_game');
+            const result = await response.json();
+
+            // 試合結果を画面に追加
+            const li = document.createElement('li');
+            li.textContent = `${result.home_team} vs ${result.away_team} - スコア: ${result.home_score} - ${result.away_score} (${result.result})`;
+            scheduleDisplay.appendChild(li);
+
+            console.log("試合結果を画面に反映しました。");
+        } catch (error) {
+            console.error("試合結果の取得中にエラーが発生しました:", error);
+        }
     };
 
     // ナビゲーションボタンにイベントリスナーを設定
@@ -115,7 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
         orderData.pitcher = pitcherName;
 
         console.log("オーダーが決定されました。Flaskアプリに送信します...", orderData);
-        // TODO: FlaskへのAPIリクエストを実装
         // fetch('/api/order', {
         //     method: 'POST',
         //     headers: { 'Content-Type': 'application/json' },
@@ -125,12 +146,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // .then(data => console.log(data));
     });
 
-    // 日程進行画面
+    // 日程進行ボタンにイベントリスナーを設定
     const advanceDayBtn = document.getElementById('advance-day-btn');
-    advanceDayBtn.addEventListener('click', () => {
-        console.log("1日進めます。Flaskアプリに試合結果を生成させます...");
-        // TODO: FlaskへのAPIリクエストを実装
-    });
+    advanceDayBtn.addEventListener('click', advanceDay);
 
     // 初期表示としてホーム画面を表示
     showPage('home-page');

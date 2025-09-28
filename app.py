@@ -1,6 +1,7 @@
 import json
 from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
+import random
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -40,6 +41,24 @@ def receive_order():
     print("Received order data:", json.dumps(order_data, indent=2))
     # ここでオーダーデータを処理し、試合結果を生成するロジックを実装
     return jsonify({"message": "Order received successfully!"}), 200
+
+# ランダムな試合結果を生成するAPIエンドポイント
+@app.route('/api/simulate_game', methods=['GET'])
+def simulate_game():
+    home_score = random.randint(0, 10)
+    away_score = random.randint(0, 10)
+    
+    result = "勝利" if home_score > away_score else "敗北" if home_score < away_score else "引き分け"
+
+    game_result = {
+        "home_team": "自チーム",
+        "away_team": "対戦相手",
+        "home_score": home_score,
+        "away_score": away_score,
+        "result": result
+    }
+
+    return jsonify(game_result)
 
 if __name__ == '__main__':
     app.run(debug=True)
