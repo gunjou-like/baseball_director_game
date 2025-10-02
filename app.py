@@ -70,11 +70,10 @@ class GameState:
         self.team_in_field = team_b
         self.result_log = [] # 試合進行ログ
         
-        # --- 修正済み: 自チームの選手IDのみでstats_updateを初期化し、KeyErrorを回避 ---
+        # 自チームの選手IDのみでstats_updateを初期化
         # 投手の被安打(h_allowed)も追加。
         self.stats_update = {p['id']: {'pa': 0, 'h': 0, 'bb': 0, 'so': 0, 'hr': 0, 'sb': 0, 'ip': 0.0, 'h_allowed': 0} 
                              for p in team_a.players_map.values()}
-        # --------------------------------------------------------
         
     def switch_half(self):
         """イニング表裏を交代し、攻守を入れ替える"""
@@ -108,7 +107,6 @@ class GameEngine:
             self.play_half_inning()
         
         # 試合結果の集計
-        # 最終イニングが bottom の場合、team_at_bat はホームチーム。top の場合、team_in_field がホームチーム。
         if self.state.half == 'bottom':
             home_team_name = self.state.team_in_field.name
             away_team_name = self.state.team_at_bat.name
@@ -134,9 +132,8 @@ class GameEngine:
         """半イニング（アウト3つ）を消化する"""
         start_inning = self.state.inning
         while self.state.outs < 3 and self.state.inning == start_inning:
-            # --- 修正済み: 盗塁判定を打席前に実行 ---
+            # 盗塁判定を打席前に実行
             self.attempt_steals()
-            # ------------------------------------
             
             batter = self.state.team_at_bat.next_batter()
             pitcher = self.state.team_in_field.get_pitcher()
@@ -144,20 +141,27 @@ class GameEngine:
             # 打席進行
             result_type, runs = self.play_at_bat(batter, pitcher)
             
-            # --- 修正済み: 成績更新は自チームの選手（self.state.stats_updateにキーが存在する選手）のみ対象 ---
+            # 成績更新
             is_batter_user_team = batter['id'] in self.state.stats_update
             is_pitcher_user_team = pitcher['id'] in self.state.stats_update
             
-            # 打者成績の更新 (打席数PAは、自チーム打者の場合のみカウント)
+            # 打者成績の更新
             if is_batter_user_team:
                 self.state.stats_update[batter['id']]['pa'] += 1
+                if result_type == 'SO':
+                    self.state.stats_update[batter['id']]['so'] += 1
+                elif result_type == 'BB':
+                    self.state.stats_update[batter['id']]['bb'] += 1
+                elif result_type in ['1B', '2B', '3B', 'HR']:
+                    self.state.stats_update[batter['id']]['h'] += 1 # 安打をカウント
+                
+                if result_type == 'HR':
+                    self.state.stats_update[batter['id']]['hr'] += 1
             
-            # 投手成績の更新 (投手が自チームの場合のみカウント)
+            # 投手成績の更新
             if is_pitcher_user_team:
                 # 投手のIPは常に更新
-                # --- 修正点: IPの集計を+1/3ではなく、アウト数で管理 (エラー回避) ---
                 self.state.stats_update[pitcher['id']]['ip'] += 1/3
-                # -------------------------------------------------------------
                 
                 if result_type == 'SO':
                     self.state.stats_update[pitcher['id']]['so'] += 1 # 奪三振
@@ -166,22 +170,7 @@ class GameEngine:
                 elif result_type in ['1B', '2B', '3B', 'HR']:
                     self.state.stats_update[pitcher['id']]['h_allowed'] += 1 # 被安打
             
-            # 打者成績の更新 (H, SO, BB, HR)
-            if is_batter_user_team:
-                if result_type == 'SO':
-                    self.state.stats_update[batter['id']]['so'] += 1
-                elif result_type == 'BB':
-                    self.state.stats_update[batter['id']]['bb'] += 1
-                elif result_type in ['1B', '2B', '3B', 'HR']:
-                    self.state.stats_update[batter['id']]['h'] += 1
-                
-                # --- 修正済み: 本塁打(HR)の成績更新を確実に実行 ---
-                if result_type == 'HR':
-                    self.state.stats_update[batter['id']]['hr'] += 1
-                # -------------------------------------------
-            # -----------------------------------------------------------------------------------------
-            
-            # スコア更新 (これは常に実行)
+            # スコア更新
             self.state.score[self.state.team_at_bat.name] += runs
         
         self.state.switch_half()
@@ -190,6 +179,7 @@ class GameEngine:
         """盗塁の試行と結果を判定する (簡易ロジック)"""
         # 盗塁は一塁走者のみ試行すると仮定 (bases[0]が1塁走者)
         runner_id = self.state.bases[0]
+        
         if runner_id is None:
             return
 
@@ -205,7 +195,6 @@ class GameEngine:
             return # 選手が見つからなければスキップ
 
         # 盗塁の総合確率を簡易計算 (スピード能力に基づく)
-        # スピード (60-90) で成功率を決定 (例: 70 -> 60%, 80 -> 70%)
         speed_ability = runner['abilities']['speed']
         steal_prob = max(0.4, min(0.85, 0.01 * speed_ability))
         
@@ -215,11 +204,11 @@ class GameEngine:
                 # 成功: 走者を2塁へ進める
                 self.state.bases[0] = None
                 self.state.bases[1] = runner_id
-                self.log.append(f"STOLEN BASE: {runner['name']} stole 2nd.")
                 
-                # --- 修正済み: 盗塁(SB)の成績更新を確実に実行 ---
+                self.log.append(f"[HOMERUN/STEAL DEBUG] STOLEN BASE SUCCESS! Runner: {runner['name']}")
+
+                # 盗塁(SB)の成績更新を確実に実行
                 self.state.stats_update[runner_id]['sb'] += 1
-                # ------------------------------------
             else:
                 # 失敗: アウト追加
                 self.state.outs += 1
@@ -244,12 +233,20 @@ class GameEngine:
         bb_prob = 0.10 - 0.001 * (pitcher['abilities']['control'] - 60)
         bb_prob = max(0.05, min(0.20, bb_prob)) # 確率を0.05〜0.20に制限
         
-        # 本塁打確率: 野手のパワー(Power)
-        hr_prob = 0.01 + 0.0005 * (batter['abilities']['power'] - 60)
-        hr_prob = min(0.05, hr_prob) # 確率を最大0.05に制限
+        # 本塁打確率: 野手のパワー(Power) vs 投手のパワー(Power)
+        batter_hr_factor = batter['abilities']['power'] - 60
+        pitcher_hr_factor = pitcher['abilities']['power'] - 60
+        # パワー差で0.005から0.035程度の確率
+        hr_prob = 0.15 + 0.0005 * (batter_hr_factor - pitcher_hr_factor)
+        hr_prob = max(0.005, min(0.035, hr_prob)) # 確率を0.005〜0.035に制限
         
         # 2. 結果判定
         rand = random.random()
+        
+        # 本塁打判定
+        if rand < hr_prob: 
+            self.log.append(f"{batter['name']} HR!")
+            return 'HR', self.move_runners(4, batter['id']) # HRは4塁打
         
         # 三振 (SO)
         if rand < so_prob:
@@ -270,13 +267,8 @@ class GameEngine:
             hit_prob = 0.30 - 0.002 * (pitcher['abilities']['control'] + pitcher['abilities']['power'] - 120)
             hit_prob = max(0.20, min(0.45, hit_prob))
             
-            # 本塁打判定 (安打の確率の一部を占める)
-            if rand < so_prob + bb_prob + hr_prob:
-                self.log.append(f"{batter['name']} HR!")
-                return 'HR', self.move_runners(4, batter['id']) # HRは4塁打
-            
-            # それ以外でヒットかどうか
-            elif rand < so_prob + bb_prob + hit_prob:
+            # ヒットかどうか
+            if random.random() < hit_prob:
                 # 安打の種類をランダムに決定 (単打, 二塁打, 三塁打)
                 hit_type = random.choices(['1B', '2B', '3B'], weights=[0.75, 0.20, 0.05], k=1)[0]
                 bases_moved = {'1B': 1, '2B': 2, '3B': 3}[hit_type]
@@ -362,8 +354,7 @@ def update_stats_after_game(teams_data, user_team_name, game_result):
                 player['stats']['bb'] += update.get('bb', 0)
                 player['stats']['h_allowed'] += update.get('h_allowed', 0)
                 
-                # --- 修正点: IPの計算を整数と端数に分解して正確に計算 ---
-                # IPを1/3単位の整数アウト数に変換
+                # IPの計算を整数と端数に分解して正確に計算
                 total_outs = round(player['stats']['ip'] * 3)
                 innings_pitched_for_calc = total_outs / 3
                 

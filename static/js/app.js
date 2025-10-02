@@ -220,7 +220,7 @@ const renderOrderPage = () => {
      * 野手の成績を整形するヘルパー関数
      */
     const formatBatterStats = (stats) => {
-        return `打率:${stats.batting_avg.toFixed(3)} | HR:${stats.homeruns} | 盗塁:${stats.steals}`;
+        return `打率:${stats.batting_avg.toFixed(3)} | HR:${stats.hr} | 盗塁:${stats.sb}`;
     };
 
     /**
