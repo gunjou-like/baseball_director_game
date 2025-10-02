@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import relationship # relationshipをインポート
 from werkzeug.security import generate_password_hash, check_password_hash
 import random
 
@@ -13,12 +14,12 @@ app.config['SECRET_KEY'] = 'your_super_secret_key_that_should_be_long_and_random
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-CORS(app, supports_credentials=True) # 認証情報 (クッキー) の送受信を許可
+# CORS設定を強化し、すべてのリソースで認証情報と全メソッドを許可する
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}}) 
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
-# login_viewを設定することで、@login_requiredで保護された関数に未認証でアクセスした際のリダイレクト先を指定
 login_manager.login_view = 'login' 
 
 # ----------------- DBモデル -----------------
@@ -27,12 +28,46 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(120), nullable=False)
+    
+    # UserStateとの一対一のリレーションシップ
+    state = relationship("UserState", back_populates="user", uselist=False)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+# ★新規追加: ユーザーごとのゲームデータを保存するモデル
+class UserState(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    
+    # 試合履歴 (JSON文字列として保存)
+    schedule_json = db.Column(db.Text, default=json.dumps([]))
+    
+    # 現在のオーダー情報 (JSON文字列として保存)
+    current_order_json = db.Column(db.Text, default=json.dumps({"batters": [], "pitcher": None}))
+
+    # Userモデルへの逆参照
+    user = relationship("User", back_populates="state")
+
+    # JSONデータをPythonオブジェクトとして扱うためのプロパティ
+    @property
+    def schedule(self):
+        return json.loads(self.schedule_json)
+    
+    @schedule.setter
+    def schedule(self, value):
+        self.schedule_json = json.dumps(value)
+
+    @property
+    def current_order(self):
+        return json.loads(self.current_order_json)
+    
+    @current_order.setter
+    def current_order(self, value):
+        self.current_order_json = json.dumps(value)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -49,7 +84,7 @@ with app.app_context():
         db.session.commit()
         print("Test user created: username='testuser', password='password'")
 
-# ----------------- データ -----------------
+# ----------------- データ (グローバルな選手リスト) -----------------
 
 TEAMS_DATA = {
     "自チーム (ベイカーズ)": [
@@ -101,7 +136,7 @@ TEAMS_DATA = {
 def index(path):
     return render_template('index.html')
 
-# ログイン処理API (重複なし)
+# ログイン処理API
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -112,12 +147,11 @@ def login():
     
     if user and user.check_password(password):
         login_user(user)
-        # フロントエンドへの応答にはユーザーIDなどの機密情報を含めない
         return jsonify({"message": "Login successful"}), 200
     
     return jsonify({"error": "Invalid credentials"}), 401
 
-# ログアウト処理API (重複なし)
+# ログアウト処理API
 @app.route('/logout')
 @login_required
 def logout():
@@ -130,27 +164,60 @@ def logout():
 def user_info():
     return jsonify({"username": current_user.username, "id": current_user.id}), 200
 
-# ----------------- ゲームAPI (認証必須) -----------------
+# ----------------- ゲームAPI (認証必須 & データ永続化) -----------------
 
-# 選手リストを取得するAPIエンドポイント
-@app.route('/api/players', methods=['GET'])
+# 選手リストを取得し、ゲーム状態を初期化/取得するエンドポイント
+@app.route('/api/game_state', methods=['GET', 'HEAD']) 
 @login_required
-def get_players():
-    # 認証済みの場合のみデータを返す
-    return jsonify(TEAMS_DATA)
+def get_game_state():
+    # ユーザーのゲーム状態を取得
+    user_state = db.session.execute(db.select(UserState).filter_by(user_id=current_user.id)).scalar_one_or_none()
+    
+    if user_state is None:
+        # データがない場合、初期データを作成
+        user_state = UserState(user_id=current_user.id)
+        db.session.add(user_state)
+        db.session.commit()
+        print(f"UserState created for user: {current_user.username}")
+    
+    # HEADリクエストの場合は認証ステータスのみ応答
+    if request.method == 'HEAD':
+        return '', 200 
+    
+    # GETリクエストの場合はグローバルデータとユーザーデータを結合して返す
+    game_state = {
+        "teams": TEAMS_DATA, # グローバルな選手データ
+        "schedule": user_state.schedule, # ユーザーの試合履歴
+        "current_order": user_state.current_order, # ユーザーの現在のオーダー
+    }
+    
+    return jsonify(game_state)
 
-# オーダー情報を受け取るAPIエンドポイント
+# オーダー情報を受け取り、DBに保存するAPIエンドポイント
 @app.route('/api/order', methods=['POST'])
 @login_required
-def receive_order():
+def update_order():
     order_data = request.json
-    print(f"User {current_user.username} received order data (Player IDs):", json.dumps(order_data, indent=2))
-    return jsonify({"message": "Order received successfully!", "received_ids": order_data}), 200
+    
+    user_state = db.session.execute(db.select(UserState).filter_by(user_id=current_user.id)).scalar_one_or_none()
+    if not user_state:
+        return jsonify({"error": "UserState not found. Please reload."}), 500
 
-# ランダムな試合結果を生成するAPIエンドポイント
+    # UserStateのcurrent_orderフィールドを更新
+    user_state.current_order = order_data
+    db.session.commit()
+
+    print(f"User {current_user.username}: Order saved successfully.")
+    return jsonify({"message": "Order saved successfully."}), 200
+
+# ランダムな試合結果を生成し、DBに保存するAPIエンドポイント
 @app.route('/api/simulate_game', methods=['GET'])
 @login_required
 def simulate_game():
+    user_state = db.session.execute(db.select(UserState).filter_by(user_id=current_user.id)).scalar_one_or_none()
+    if not user_state:
+        return jsonify({"error": "UserState not found. Please reload."}), 500
+        
     home_score = random.randint(0, 10)
     away_score = random.randint(0, 10)
     
@@ -167,8 +234,16 @@ def simulate_game():
         "away_score": away_score,
         "result": result
     }
+    
+    # 試合結果をUserStateのscheduleに追加して保存
+    current_schedule = user_state.schedule
+    current_schedule.append(game_result)
+    user_state.schedule = current_schedule # Setterプロパティを通じてJSONに変換し保存
+    db.session.commit()
 
     return jsonify(game_result)
 
 if __name__ == '__main__':
+    # 開発環境特有の問題に対処するため、debug=Falseを推奨
+    # ただし、開発中は利便性のためdebug=Trueのままにしておきます
     app.run(debug=True, port=5000)

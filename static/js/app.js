@@ -1,352 +1,345 @@
-// -------------------------------------------------------------------------
-// グローバル定数と状態管理
-// -------------------------------------------------------------------------
+let isAuthenticated = false;
+let gameState = {
+    teams: null, // 全チームの選手リスト
+    schedule: [], // ユーザーの試合履歴
+    current_order: { batters: [], pitcher: null } // ユーザーの保存済みオーダー
+};
 
-const HOME_PAGE_ID = 'home-page';
-const ORDER_PAGE_ID = 'order-page';
-const SCHEDULE_PAGE_ID = 'schedule-page';
-const LOGIN_PAGE_ID = 'login-page';
-
-let isAuthenticated = false; // 認証状態フラグ
-
-// -------------------------------------------------------------------------
-// ユーティリティ関数
-// -------------------------------------------------------------------------
+// --------------------------------------------------
+// UI/ナビゲーション関連
+// --------------------------------------------------
 
 /**
- * 保護されたエンドポイントへのリクエストを安全に実行し、401エラーを処理します。
- * @param {string} url - リクエストURL
- * @param {object} options - fetchオプション
- * @returns {Promise<Response>} fetchのレスポンスオブジェクト
+ * すべてのゲーム画面要素とログイン画面要素の表示/非表示を制御
+ * @param {boolean} showGame - ゲーム画面を表示するかどうか
+ */
+const updateUI = (showGame) => {
+    const gamePages = document.querySelectorAll('.page-section:not(#login-page)');
+    const loginPage = document.getElementById('login-page');
+    const navBar = document.querySelector('.nav-bar');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    if (showGame) {
+        // ゲーム画面を表示
+        gamePages.forEach(p => p.classList.remove('hidden'));
+        loginPage.classList.add('hidden');
+        navBar.classList.remove('hidden');
+        
+        // ★修正点: ログアウトボタンを再表示
+        if (logoutBtn) logoutBtn.style.display = 'block'; 
+        
+        console.log("[UI] ゲーム画面を表示しました。");
+    } else {
+        // ログイン画面を表示
+        gamePages.forEach(p => p.classList.add('hidden'));
+        loginPage.classList.remove('hidden');
+        navBar.classList.add('hidden');
+        
+        // ★修正点: ログアウトボタンを非表示
+        if (logoutBtn) logoutBtn.style.display = 'none'; 
+        
+        console.log("[UI] ログイン画面を表示しました。");
+    }
+};
+
+/**
+ * ページセクションの表示を切り替える
+ * @param {string} pageId - 表示したいセクションのID
+ */
+const showPage = (pageId) => {
+    if (!pageId) {
+        console.error("[NAV ERROR] 遷移先ページIDが未定義です。");
+        return;
+    }
+    
+    document.querySelectorAll('.page-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    const targetPage = document.getElementById(pageId);
+    if (targetPage) {
+        targetPage.classList.add('active');
+        console.log(`[NAV] ページを「${pageId}」に切り替えます。`);
+
+        // 各ページ固有のレンダリング
+        if (pageId === 'order-page') {
+            renderOrderPage();
+        } else if (pageId === 'schedule-page') {
+            renderSchedulePage();
+        }
+    } else {
+        console.error(`[NAV ERROR] ID: ${pageId} の要素が見つかりません。`);
+    }
+};
+
+/**
+ * 認証状態をチェックし、適切な画面を表示する
+ * @param {string} defaultPageId - 認証成功時に表示するデフォルトのページID
+ */
+const checkAuthAndShowPage = (defaultPageId) => {
+    if (isAuthenticated) {
+        updateUI(true);
+        showPage(defaultPageId);
+    } else {
+        updateUI(false);
+        showPage('login-page');
+    }
+};
+
+// --------------------------------------------------
+// 認証・セッション管理
+// --------------------------------------------------
+
+/**
+ * 認証情報（セッションクッキー）を含む安全なfetch関数
+ * 401エラーを検出した場合、自動的にログアウト処理を行う
  */
 const safeFetch = async (url, options = {}) => {
     try {
-        const response = await fetch(url, {
+        const response = await fetch(url, { 
             ...options,
-            // 認証情報（クッキー）を確実に送信
-            credentials: 'include'
+            credentials: 'include' // クッキーを送信
         });
 
         if (response.status === 401) {
-            console.warn(`[AUTH] 保護されたエンドポイント (${url}) へのアクセスが拒否されました (401)。`);
-            // 強制的に未認証状態に設定し、ログイン画面へ遷移
+            console.log("[AUTH FAIL] 401 Unauthenticated. セッションをクリアしログインへ。");
             isAuthenticated = false;
-            updateAuthUI();
-            showPage(LOGIN_PAGE_ID); 
-            
-            // 呼び出し元が further processing を停止できるようにカスタムエラーをスロー
-            throw new Error("Unauthenticated access detected.");
+            // ログインページへ強制リダイレクト (ただし、リロードはしない)
+            checkAuthAndShowPage('login-page');
+            return null;
         }
 
         return response;
     } catch (error) {
-        // ネットワークエラーなどを捕捉
-        console.error(`[FETCH ERROR] ${url} の通信中にエラーが発生:`, error);
-        throw error;
+        console.error(`[FETCH ERROR] ${url}:`, error);
+        return null; // ネットワークエラーの場合
     }
 };
 
 /**
- * 指定されたページIDに基づいて画面を切り替えます。
- * @param {string} pageId - 表示するページセクションのID
+ * ログイン処理
  */
-const showPage = (pageId) => {
-    if (!document.getElementById(pageId)) {
-        console.error(`[NAV ERROR] ID: ${pageId} の要素が見つかりません。`);
+const handleLogin = async (username, password) => {
+    const messageArea = document.getElementById('login-message');
+    messageArea.textContent = 'ログイン中...';
+
+    const response = await safeFetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+    });
+
+    if (response && response.ok) {
+        isAuthenticated = true;
+        messageArea.textContent = 'ログイン成功！';
+        console.log("[AUTH] ログイン成功。");
+        
+        // ログイン成功後、ゲーム状態をロードし、ホームへ遷移
+        await loadGameState();
+        checkAuthAndShowPage('home-page');
+    } else if (response) {
+        const errorData = await response.json();
+        messageArea.textContent = `ログイン失敗: ${errorData.error}`;
+        console.log(`[AUTH FAIL] ログイン失敗: ${errorData.error}`);
+    } else {
+        messageArea.textContent = 'ネットワーク接続エラー。サーバーを確認してください。';
+    }
+};
+
+/**
+ * ログアウト処理
+ */
+const handleLogout = async () => {
+    const response = await safeFetch('/logout', { method: 'GET' });
+
+    if (response && response.ok) {
+        // サーバー側でセッションがクリアされた
+        isAuthenticated = false;
+        console.log("[AUTH] ログアウト成功。");
+        // ログイン画面へ遷移
+        checkAuthAndShowPage('login-page');
+    } else {
+        console.error("[AUTH ERROR] ログアウト通信エラー: サーバー応答が不正です。");
+    }
+};
+
+// --------------------------------------------------
+// ゲームデータ管理 (API連携)
+// --------------------------------------------------
+
+/**
+ * 起動時の認証チェックとゲーム状態の初期ロード
+ */
+const loadGameState = async () => {
+    // HEADリクエストで認証チェックとデータ取得を同時に行う
+    console.log("[DATA] ゲーム状態をロード中...");
+    
+    // /api/game_stateは認証必須
+    const response = await safeFetch('/api/game_state', { method: 'GET' });
+
+    if (response && response.ok) {
+        const data = await response.json();
+        
+        // グローバル状態を更新
+        gameState.teams = data.teams;
+        gameState.schedule = data.schedule;
+        gameState.current_order = data.current_order;
+
+        isAuthenticated = true;
+        console.log("[DATA] ゲーム状態のロード完了。", gameState);
+        return true;
+    } else if (isAuthenticated) {
+        // 認証フラグは立っているがデータ取得に失敗した場合
+        console.error("[DATA ERROR] ゲームデータのロードに失敗しました。");
+    }
+    return false;
+};
+
+// --------------------------------------------------
+// オーダー決定画面 (ID: order-page)
+// --------------------------------------------------
+
+const renderOrderPage = () => {
+    const batterOrderContainer = document.getElementById('batter-order-container');
+    const pitcherSelectionContainer = document.getElementById('pitcher-selection-container');
+    const userTeamName = "自チーム (ベイカーズ)";
+    
+    if (!gameState.teams) {
+        batterOrderContainer.innerHTML = '選手データをロード中...';
+        pitcherSelectionContainer.innerHTML = '';
         return;
     }
 
-    console.log(`[NAV] ページを「${pageId}」に切り替えます。`);
-    document.querySelectorAll('.page-section').forEach(section => {
-        section.classList.remove('active');
-    });
-    document.getElementById(pageId).classList.add('active');
-    console.log(`[NAV] #${pageId} に active クラスを適用しました。`);
-};
+    const userTeamPlayers = gameState.teams[userTeamName] || [];
+    const batterPlayers = userTeamPlayers.filter(p => !p.is_pitcher);
+    const pitcherPlayers = userTeamPlayers.filter(p => p.is_pitcher);
 
-/**
- * 認証状態に基づいて、ナビゲーションUIの表示/非表示を更新します。
- */
-const updateAuthUI = () => {
-    const logoutBtn = document.getElementById('logout-btn');
-    const navBar = document.querySelector('.nav-bar');
-    
-    // ナビゲーションボタン（ゲーム画面へのリンク）
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        if (btn.dataset.target !== LOGIN_PAGE_ID) {
-            btn.disabled = !isAuthenticated;
-        }
-    });
-
-    if (isAuthenticated) {
-        console.log("[UI] ログアウトボタンを表示しました。");
-        if (logoutBtn) logoutBtn.style.display = 'block';
-        if (navBar) navBar.style.visibility = 'visible';
-    } else {
-        console.log("[UI] ログイン/ゲーム要素を非表示にしました。");
-        if (logoutBtn) logoutBtn.style.display = 'none';
-        // 未認証時はナビゲーション全体も非表示にする (CSSでinitial-visibilityをhiddenに設定)
-        if (navBar) navBar.style.visibility = 'hidden'; 
-    }
-};
-
-/**
- * 認証状態をチェックし、アプリケーションの初期画面を表示します。
- * @param {string} [initialPageId=HOME_PAGE_ID] - 認証成功時の遷移先
- */
-const checkAuthAndShowPage = async (initialPageId = HOME_PAGE_ID) => {
-    console.log("[INIT] 起動時の認証状態を確認中...");
-
-    // 認証チェックのため、保護された最小限のAPIにアクセス
-    try {
-        const response = await safeFetch('/api/players', { method: 'HEAD' });
-        
-        // HEADリクエストが成功し、401エラーをスローしなかった場合
-        if (response.ok) {
-            isAuthenticated = true;
-            console.log("[INIT] 既存セッションを検出しました。");
-        }
-    } catch (error) {
-        // safeFetchが401エラーをスローした場合は、catchで捕捉される
-        isAuthenticated = false;
-        console.log("[INIT] セッションが見つかりませんでした。");
-    }
-    
-    updateAuthUI();
-
-    if (isAuthenticated) {
-        // 認証済みの場合、指定された初期画面またはホームに遷移
-        showPage(initialPageId);
-        // オーダーページが初期画面の場合、レンダリングを呼び出す
-        if (initialPageId === ORDER_PAGE_ID) renderOrderPage();
-    } else {
-        // 未認証の場合、ログイン画面へ遷移
-        showPage(LOGIN_PAGE_ID);
-        renderLoginPage(); // ログインフォームをレンダリング
-    }
-};
-
-
-// -------------------------------------------------------------------------
-// 認証ロジック
-// -------------------------------------------------------------------------
-
-/**
- * ログイン画面をレンダリングし、イベントリスナーを設定します。
- */
-const renderLoginPage = () => {
-    const loginForm = document.getElementById('login-form');
-    const loginMessage = document.getElementById('login-message');
-    
-    if (!loginForm) return;
-
-    loginForm.onsubmit = async (event) => {
-        event.preventDefault();
-        loginMessage.textContent = 'ログイン中...';
-        
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-
-        try {
-            const response = await fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-                credentials: 'include'
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                console.log("[AUTH] ログイン成功:", data.message);
-                loginMessage.textContent = 'ログイン成功！';
-                isAuthenticated = true;
-                updateAuthUI();
-                // 認証成功後、ホーム画面へ遷移
-                showPage(HOME_PAGE_ID);
-            } else {
-                // 401 Unauthorized またはその他のエラー
-                console.warn("[AUTH] ログイン失敗:", data.error);
-                loginMessage.textContent = `ログイン失敗: ${data.error || '認証情報が不正です'}`;
-                isAuthenticated = false;
-                updateAuthUI();
-            }
-        } catch (error) {
-            console.error("[AUTH ERROR] ログイン通信エラー:", error);
-            loginMessage.textContent = '通信エラーが発生しました。';
-            isAuthenticated = false;
-            updateAuthUI();
-        }
-    };
-};
-
-/**
- * ログアウト処理を実行します。
- */
-const handleLogout = async () => {
-    console.log("[AUTH] ログアウト処理を開始します。");
-    try {
-        // 修正: ログアウトエンドポイントはJSONを返すようにFlask側を修正済み
-        const response = await safeFetch('/logout'); 
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log("[AUTH] ログアウト成功:", data.message);
-            
-            // 状態をリセットし、UIを更新
-            isAuthenticated = false;
-            updateAuthUI();
-            
-            // ログアウト後、ログイン画面に遷移
-            showPage(LOGIN_PAGE_ID); 
-            renderLoginPage();
-        } else {
-            console.error("[AUTH ERROR] ログアウト処理でサーバーエラー:", response.status);
-            alert("ログアウトに失敗しました。サーバーエラーです。");
-        }
-    } catch (error) {
-        // safeFetch内の401ハンドリングで既にログインページにリダイレクトされるため、ここでは主にネットワークエラーを捕捉
-        if (error.message !== "Unauthenticated access detected.") {
-            console.error("[AUTH ERROR] ログアウト通信エラー:", error);
-        }
-    }
-};
-
-
-// -------------------------------------------------------------------------
-// ゲームロジック (UI/API連携)
-// -------------------------------------------------------------------------
-
-/**
- * オーダー決定画面のレンダリング関数
- */
-const renderOrderPage = async () => {
-    const batterOrderContainer = document.getElementById('batter-order-container');
-    const pitcherSelectionContainer = document.getElementById('pitcher-selection-container');
-    
-    try {
-        // 認証済みのセッションで選手データを取得
-        const playersResponse = await safeFetch('/api/players');
-        const teamsData = await playersResponse.json();
-        
-        const userTeamName = "自チーム (ベイカーズ)";
-        const userTeamPlayers = teamsData[userTeamName] || [];
-
-        const batterPlayers = userTeamPlayers.filter(p => !p.is_pitcher);
-        const pitcherPlayers = userTeamPlayers.filter(p => p.is_pitcher);
-
-        // ... 打者スタメンと投手のUI生成ロジック（選手IDを使用） ...
-        batterOrderContainer.innerHTML = '';
-        for (let i = 1; i <= 9; i++) {
-            const group = document.createElement('div');
-            group.classList.add('player-select-group');
-            group.innerHTML = `<label for="batter-${i}">${i}番</label><select id="batter-${i}"></select>`;
-            
-            const select = group.querySelector('select');
-            select.innerHTML = '<option value="">選手を選択</option>';
-            batterPlayers.forEach(player => {
-                const option = document.createElement('option');
-                option.value = player.id; 
-                option.textContent = `${player.name} (${player.id})`;
-                select.appendChild(option);
-            });
-            batterOrderContainer.appendChild(group);
-        }
-
-        pitcherSelectionContainer.innerHTML = '';
+    // 打者スタメンのUIを動的に生成
+    batterOrderContainer.innerHTML = '';
+    for (let i = 1; i <= 9; i++) {
         const group = document.createElement('div');
         group.classList.add('player-select-group');
-        group.innerHTML = `<label for="pitcher">先発</label><select id="pitcher"></select>`;
+        group.innerHTML = `<label for="batter-${i}">${i}番</label><select id="batter-${i}"></select>`;
         
         const select = group.querySelector('select');
         select.innerHTML = '<option value="">選手を選択</option>';
-        pitcherPlayers.forEach(player => {
+        batterPlayers.forEach(player => {
             const option = document.createElement('option');
-            option.value = player.id;
+            option.value = player.id; 
             option.textContent = `${player.name} (${player.id})`;
+            
+            // 以前保存されたオーダーを初期値として設定
+            if (gameState.current_order.batters[i - 1] === player.id) {
+                option.selected = true;
+            }
             select.appendChild(option);
         });
-        pitcherSelectionContainer.appendChild(group);
-
-        console.log("オーダー決定画面のUIを生成しました。");
-
-    } catch (error) {
-        // 401エラーはsafeFetchが処理するため、ここでは無視
-        if (error.message !== "Unauthenticated access detected.") {
-            console.error("オーダーページレンダリング中にエラー:", error);
-        }
+        batterOrderContainer.appendChild(group);
     }
+
+    // 先発投手のUIを動的に生成
+    pitcherSelectionContainer.innerHTML = '';
+    const group = document.createElement('div');
+    group.classList.add('player-select-group');
+    group.innerHTML = `<label for="pitcher">先発</label><select id="pitcher"></select>`;
+    
+    const select = group.querySelector('select');
+    select.innerHTML = '<option value="">選手を選択</option>';
+    pitcherPlayers.forEach(player => {
+        const option = document.createElement('option');
+        option.value = player.id;
+        option.textContent = `${player.name} (${player.id})`;
+        
+        // 以前保存されたオーダーを初期値として設定
+        if (gameState.current_order.pitcher === player.id) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+    pitcherSelectionContainer.appendChild(group);
 };
 
-/**
- * 日程進行画面のレンダリング関数
- */
-const renderSchedulePage = async () => {
-    // スケジュールとランキングの表示ロジック（未実装）
+// --------------------------------------------------
+// 日程進行画面 (ID: schedule-page)
+// --------------------------------------------------
+
+const renderSchedulePage = () => {
     const scheduleDisplay = document.getElementById('game-schedule');
     const rankingDisplay = document.getElementById('league-ranking');
     
-    scheduleDisplay.innerHTML = '<li>試合結果がここに表示されます。</li>';
+    // 試合履歴の表示
+    scheduleDisplay.innerHTML = '<h3>試合結果</h3>';
+    
+    if (gameState.schedule && gameState.schedule.length > 0) {
+        // 最新の結果を上から表示
+        gameState.schedule.slice().reverse().forEach(result => {
+            const li = document.createElement('li');
+            li.textContent = `${result.home_team} vs ${result.away_team} - スコア: ${result.home_score} - ${result.away_score} (${result.result})`;
+            li.classList.add(result.result === '勝利' ? 'result-win' : result.result === '敗北' ? 'result-lose' : 'result-draw');
+            scheduleDisplay.appendChild(li);
+        });
+    } else {
+        scheduleDisplay.innerHTML += '<li>まだ試合がありません。</li>';
+    }
+
     rankingDisplay.innerHTML = '<li>順位データは後で実装します。</li>';
 };
 
 /**
- * 試合をシミュレートする関数
+ * 試合をシミュレートし、DBに結果を保存する
  */
 const advanceDay = async () => {
-    console.log("1日進めます。試合結果を生成中...");
-    const scheduleDisplay = document.getElementById('game-schedule');
-    
-    try {
-        const response = await safeFetch('/api/simulate_game');
-        const result = await response.json();
+    if (!isAuthenticated) return;
+    console.log("[GAME] 1日進めます。試合結果を生成中...");
 
-        // 試合結果を画面に追加
-        const li = document.createElement('li');
-        li.textContent = `${result.home_team} vs ${result.away_team} - スコア: ${result.home_score} - ${result.away_score} (${result.result})`;
-        li.classList.add(result.result === '勝利' ? 'result-win' : result.result === '敗北' ? 'result-lose' : 'result-draw');
-        scheduleDisplay.prepend(li); 
+    const response = await safeFetch('/api/simulate_game', { method: 'GET' });
 
-        console.log("試合結果を画面に反映しました。");
-    } catch (error) {
-        if (error.message !== "Unauthenticated access detected.") {
-            console.error("試合シミュレーション中にエラーが発生しました:", error);
-        }
+    if (response && response.ok) {
+        // 試合結果生成とDB保存がサーバー側で完了
+        console.log("[GAME] 試合結果をDBに記録しました。");
+        
+        // 最新のゲーム状態を再ロードしてUIを更新
+        await loadGameState();
+        renderSchedulePage(); // スケジュール画面を再描画
+    } else {
+        console.error("[GAME ERROR] 試合の進行中にエラーが発生しました。");
     }
 };
 
-
-// -------------------------------------------------------------------------
+// --------------------------------------------------
 // イベントリスナーと初期化
-// -------------------------------------------------------------------------
+// --------------------------------------------------
 
-document.addEventListener('DOMContentLoaded', () => {
-    console.log("アプリのロジックがスタートしました。");
-    
+const setupEventListeners = () => {
     // ナビゲーションボタンにイベントリスナーを設定
     document.querySelectorAll('.nav-btn').forEach(button => {
         button.addEventListener('click', (event) => {
-            const targetPageId = event.target.dataset.target;
-            // ログイン済みかチェックし、適切な画面へ遷移
-            if (targetPageId !== LOGIN_PAGE_ID) {
-                checkAuthAndShowPage(targetPageId);
-            } else {
+            if (isAuthenticated) {
+                const targetPageId = event.target.dataset.target;
                 showPage(targetPageId);
-                renderLoginPage();
             }
         });
     });
 
-    // ログアウトボタンのイベントリスナー
+    // ログアウトボタン
     const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', handleLogout);
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+
+    // ログインフォームの処理
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.onsubmit = (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            handleLogin(username, password);
+        };
     }
-    
-    // オーダー決定ボタンのイベントリスナー 
+
+    // オーダー決定ボタンのイベントリスナー
     const submitOrderBtn = document.getElementById('submit-order-btn');
     if (submitOrderBtn) {
         submitOrderBtn.addEventListener('click', async () => {
+            if (!isAuthenticated) return;
             const messageArea = document.getElementById('order-message');
             const orderData = {
                 batters: [],
@@ -359,8 +352,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // 打者オーダー（1-9番）の選手IDを取得
             for (let i = 1; i <= 9; i++) {
                 const selectElement = document.getElementById(`batter-${i}`);
-                if (!selectElement) continue;
-
                 const playerId = selectElement.value;
 
                 if (!playerId) {
@@ -381,8 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 先発投手の選手IDを取得
             const pitcherSelect = document.getElementById('pitcher');
-            const pitcherId = pitcherSelect ? pitcherSelect.value : null;
-
+            const pitcherId = pitcherSelect.value;
             if (!pitcherId) {
                 messageArea.textContent = '先発投手を指定してください。';
                 return;
@@ -392,42 +382,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             orderData.pitcher = parseInt(pitcherId); 
-            selectedPlayerIds.add(pitcherId);
 
-            console.log("オーダーが決定されました。Flaskアプリに送信する選手IDリスト:", orderData);
+            console.log("[ORDER] オーダーを保存します:", orderData);
             
-            // Flask APIに選手IDリストを送信
-            try {
-                const response = await safeFetch('/api/order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(orderData),
-                    credentials: 'include'
-                });
+            // Flask APIに選手IDリストを送信し、DBに保存
+            const response = await safeFetch('/api/order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    messageArea.textContent = `オーダー送信成功！ Flask応答: ${data.message}`;
-                } else if (response.status !== 401) {
-                    // 401以外のエラー
-                    messageArea.textContent = 'オーダー送信中にサーバーエラーが発生しました。';
-                }
-            } catch (error) {
-                 // safeFetchで401は処理済み
-                if (error.message !== "Unauthenticated access detected.") {
-                    messageArea.textContent = '通信エラーが発生しました。';
-                    console.error('Error sending order:', error);
-                }
+            if (response && response.ok) {
+                const data = await response.json();
+                messageArea.textContent = `オーダー保存成功！`;
+                // グローバル状態の current_order を更新 (DB書き込み後)
+                gameState.current_order = orderData;
+            } else {
+                messageArea.textContent = 'オーダー保存中にエラーが発生しました。';
             }
         });
     }
 
+
     // 日程進行ボタンにイベントリスナーを設定
     const advanceDayBtn = document.getElementById('advance-day-btn');
-    if (advanceDayBtn) {
-        advanceDayBtn.addEventListener('click', advanceDay);
-    }
+    if (advanceDayBtn) advanceDayBtn.addEventListener('click', advanceDay);
+};
 
-    // アプリケーション起動時の認証チェックと画面表示
-    checkAuthAndShowPage();
+// アプリケーション初期化
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log("アプリのロジックがスタートしました。");
+    setupEventListeners();
+
+    // 起動時の認証チェックとデータロード
+    console.log("[INIT] 起動時の認証状態を確認中...");
+    const isAuthenticatedOnLoad = await loadGameState();
+
+    if (isAuthenticatedOnLoad) {
+        console.log("[INIT] 既存セッションを検出しました。");
+        checkAuthAndShowPage('home-page');
+    } else {
+        console.log("[INIT] セッションが見つかりませんでした。");
+        checkAuthAndShowPage('login-page');
+    }
 });
