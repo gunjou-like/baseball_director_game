@@ -19,6 +19,14 @@ body {
     overflow: hidden;
 }
 
+.auth-info {
+    font-size: 0.8em;
+    text-align: right;
+    color: #6c757d;
+    margin-bottom: 10px;
+    word-break: break-all; /* ユーザーIDが長い場合に改行されるように */
+}
+
 .nav-bar {
     display: flex;
     justify-content: center;
@@ -105,4 +113,29 @@ button:hover {
     display: block;
     width: 100%;
     margin-top: 30px;
+}
+
+/* 試合結果のスタイル */
+#game-schedule {
+    list-style: none;
+    padding: 0;
+}
+
+#game-schedule li {
+    padding: 8px;
+    border-left: 5px solid;
+    margin-bottom: 5px;
+    background-color: #f8f9fa;
+}
+
+.result-win {
+    border-left-color: #28a745; /* 緑色 */
+}
+
+.result-lose {
+    border-left-color: #dc3545; /* 赤色 */
+}
+
+.result-draw {
+    border-left-color: #ffc107; /* 黄色 */
 }
