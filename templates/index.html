@@ -4,24 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>野球監督シミュレーション</title>
-    <!-- CSSファイルの読み込みを確認 -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
         <!-- ナビゲーション -->
         <nav class="nav-bar">
-            <!-- class="nav-btn" と data-target の綴りを確認 -->
             <button class="nav-btn" data-target="home-page">ホーム</button>
             <button class="nav-btn" data-target="order-page">オーダー決定</button>
             <button class="nav-btn" data-target="schedule-page">日程進行</button>
+            <!-- ログアウトボタンは後で実装します -->
         </nav>
-
+        
+        <!-- ログイン画面 (ID: login-page) -->
+        <div id="login-page" class="page-section">
+            <h1 class="page-title">ログイン</h1>
+            <form id="login-form">
+                <div class="player-select-group">
+                    <label for="username">ユーザー名:</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="player-select-group">
+                    <label for="password">パスワード:</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <!-- ログインボタン -->
+                <button type="submit">ログイン</button>
+                <!-- 登録ボタンは今回は省略 -->
+            </form>
+            <div id="login-message" class="message-area" style="margin-top: 15px; text-align: center;"></div>
+        </div>
+        
         <!-- ホーム画面 -->
-        <div id="home-page" class="page-section active">
+        <div id="home-page" class="page-section">
             <h1 class="page-title">ホーム</h1>
             <p>ようこそ、監督！</p>
             <p>今シーズンの采配でチームを優勝に導きましょう。</p>
+            <p style="margin-top: 20px; font-weight: bold;">ゲームを開始するにはログインしてください。</p>
         </div>
 
         <!-- オーダー決定画面 -->
@@ -54,7 +73,7 @@
         </div>
 
     </div>
-    <!-- JavaScriptファイルの読み込みを確認（defer属性を推奨） -->
+    <!-- JavaScriptファイルの読み込み -->
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 </body>
 </html>

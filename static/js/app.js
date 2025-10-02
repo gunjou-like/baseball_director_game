@@ -1,27 +1,110 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log("アプリのロジックがスタートしました。");
     
-    // ページセクションの切り替え関数
+    // 認証状態を管理するフラグ
+    let isAuthenticated = false; 
+
+    // ログイン画面のID
+    const LOGIN_PAGE_ID = 'login-page';
+
+    // -------------------------------------------------------------------------
+    // ユーティリティ関数
+    // -------------------------------------------------------------------------
+
+    // 認証エラーをチェックし、ログインページへリダイレクトする fetch ラッパー
+    const safeFetch = async (url, options = {}) => {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            console.warn("[AUTH] 401 Unauthenticated: ログインページへリダイレクトします。");
+            isAuthenticated = false;
+            // ログインページへの遷移を強制
+            showPage(LOGIN_PAGE_ID);
+            return null;
+        }
+        if (!response.ok) {
+            throw new Error(`HTTP Error! Status: ${response.status}`);
+        }
+        return response;
+    };
+
+    // 認証状態をチェックし、適切なページを表示する関数
+    const checkAuthAndShowPage = (pageId) => {
+        if (!isAuthenticated && pageId !== LOGIN_PAGE_ID) {
+            console.log("[AUTH] 認証が必要です。ログインページを表示します。");
+            showPage(LOGIN_PAGE_ID);
+        } else {
+            showPage(pageId);
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // ページ遷移/レンダリングロジック
+    // -------------------------------------------------------------------------
+
+    // ページセクションの切り替え関数 (内部使用)
     const showPage = (pageId) => {
-        console.log(`[NAV] ページを「${pageId}」に切り替えます。`); // デバッグログ
+        console.log(`[NAV] ページを「${pageId}」に切り替えます。`); 
         document.querySelectorAll('.page-section').forEach(section => {
             section.classList.remove('active');
         });
         const targetElement = document.getElementById(pageId);
         if (targetElement) {
             targetElement.classList.add('active');
-            console.log(`[NAV] #${pageId} に active クラスを適用しました。`); // デバッグログ
+            console.log(`[NAV] #${pageId} に active クラスを適用しました。`); 
         } else {
-            console.error(`[NAV ERROR] ID: ${pageId} の要素が見つかりません。`); // デバッグログ
+            console.error(`[NAV ERROR] ID: ${pageId} の要素が見つかりません。`); 
         }
         
-
         // 各ページ固有の初期化ロジック
         if (pageId === 'order-page') {
             renderOrderPage();
         } else if (pageId === 'schedule-page') {
-            renderSchedulePage(); // スケジュールページにも初期化ロジックを追加
+            renderSchedulePage(); 
+        } else if (pageId === LOGIN_PAGE_ID) {
+            renderLoginPage();
         }
+    };
+
+    // ログイン画面のレンダリングとイベント設定
+    const renderLoginPage = () => {
+        const loginMessage = document.getElementById('login-message');
+        const loginForm = document.getElementById('login-form');
+        
+        // フォームがない場合は、HTMLが未定義
+        if (!loginForm) return;
+
+        loginMessage.textContent = 'ユーザー名とパスワードを入力してください (テストユーザー: testuser/password)';
+
+        loginForm.onsubmit = async (event) => {
+            event.preventDefault();
+            const username = loginForm.username.value;
+            const password = loginForm.password.value;
+            loginMessage.textContent = 'ログイン中...';
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    isAuthenticated = true;
+                    loginMessage.textContent = `ログイン成功: User ID ${data.user_id}`;
+                    console.log("[AUTH] ログイン成功。ホーム画面へ遷移します。");
+                    // ログイン成功後、ホーム画面へ強制的に遷移
+                    checkAuthAndShowPage('home-page'); 
+                } else {
+                    loginMessage.textContent = `ログイン失敗: ${data.message}`;
+                    console.error("[AUTH] ログイン失敗:", data.message);
+                }
+            } catch (error) {
+                loginMessage.textContent = 'サーバーとの通信エラーが発生しました。';
+                console.error('[AUTH ERROR] ログイン通信エラー:', error);
+            }
+        };
     };
 
     // オーダー決定画面のレンダリング関数
@@ -31,9 +114,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         console.log("[RENDER] オーダー決定画面のレンダリング開始。");
         
-        // ** (変更点) Flask APIから直接データを取得します **
         try {
-            const playersResponse = await fetch('/api/players');
+            // safeFetchを使用
+            const playersResponse = await safeFetch('/api/players');
+            if (!playersResponse) return; // 認証失敗時はここで処理終了
+            
             const teamsData = await playersResponse.json();
             
             const userTeamName = "自チーム (ベイカーズ)";
@@ -53,7 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 select.innerHTML = '<option value="">選手を選択</option>';
                 batterPlayers.forEach(player => {
                     const option = document.createElement('option');
-                    // valueは選手ID
                     option.value = player.id; 
                     option.textContent = `${player.name} (${player.id})`;
                     select.appendChild(option);
@@ -71,7 +155,6 @@ document.addEventListener('DOMContentLoaded', () => {
             select.innerHTML = '<option value="">選手を選択</option>';
             pitcherPlayers.forEach(player => {
                 const option = document.createElement('option');
-                // valueは選手ID
                 option.value = player.id;
                 option.textContent = `${player.name} (${player.id})`;
                 select.appendChild(option);
@@ -103,8 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const scheduleDisplay = document.getElementById('game-schedule');
         
         try {
-            // ** (変更点) Flask APIから直接データを取得します **
-            const response = await fetch('/api/simulate_game');
+            // safeFetchを使用
+            const response = await safeFetch('/api/simulate_game');
+            if (!response) return; // 認証失敗時はここで処理終了
+
             const result = await response.json();
 
             // 試合結果を画面に追加
@@ -119,12 +204,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // -------------------------------------------------------------------------
+    // イベントリスナー
+    // -------------------------------------------------------------------------
+
     // ナビゲーションボタンにイベントリスナーを設定
     document.querySelectorAll('.nav-btn').forEach(button => {
         button.addEventListener('click', (event) => {
             const targetPageId = event.target.dataset.target;
-            console.log(`[EVENT] ナビボタンクリック: target=${targetPageId}`); // デバッグログ
-            showPage(targetPageId);
+            console.log(`[EVENT] ナビボタンクリック: target=${targetPageId}`); 
+            checkAuthAndShowPage(targetPageId); // 認証チェックを追加
         });
     });
 
@@ -132,6 +221,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitOrderBtn = document.getElementById('submit-order-btn');
     submitOrderBtn.addEventListener('click', async () => {
         console.log("[EVENT] オーダー決定ボタンクリック。");
+        if (!isAuthenticated) {
+            alert('ログインが必要です。');
+            return;
+        }
+
         const messageArea = document.getElementById('order-message');
         const orderData = {
             batters: [],
@@ -180,11 +274,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Flask APIに選手IDリストを送信
         try {
-            const response = await fetch('/api/order', {
+            const response = await safeFetch('/api/order', { // safeFetchを使用
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orderData)
             });
+
+            if (!response) return; // 認証失敗時はここで処理終了
+            
             const data = await response.json();
             messageArea.textContent = `オーダー送信成功！ Flask応答: ${data.message}`;
             console.log("[API SUCCESS] オーダー送信完了。");
@@ -198,6 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const advanceDayBtn = document.getElementById('advance-day-btn');
     advanceDayBtn.addEventListener('click', advanceDay);
 
-    // 初期表示としてホーム画面を表示
-    showPage('home-page');
+    // 初期表示: まず認証状態を確認し、ホームまたはログイン画面へ
+    checkAuthAndShowPage('home-page'); 
 });

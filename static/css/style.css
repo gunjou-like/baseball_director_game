@@ -19,14 +19,6 @@ body {
     overflow: hidden;
 }
 
-.auth-info {
-    font-size: 0.8em;
-    text-align: right;
-    color: #6c757d;
-    margin-bottom: 10px;
-    word-break: break-all; /* ユーザーIDが長い場合に改行されるように */
-}
-
 .nav-bar {
     display: flex;
     justify-content: center;
@@ -49,6 +41,7 @@ body {
     background-color: #2980b9;
 }
 
+/* ページセクションの非表示スタイル */
 .page-section {
     display: none;
     transition: opacity 0.5s ease-in-out;
@@ -56,6 +49,7 @@ body {
     padding: 20px 0;
 }
 
+/* アクティブな（表示する）ページセクションのスタイル */
 .page-section.active {
     display: block;
     opacity: 1;
@@ -129,13 +123,13 @@ button:hover {
 }
 
 .result-win {
-    border-left-color: #28a745; /* 緑色 */
+    border-left-color: #28a745; /* 緑色 (勝利) */
 }
 
 .result-lose {
-    border-left-color: #dc3545; /* 赤色 */
+    border-left-color: #dc3545; /* 赤色 (敗北) */
 }
 
 .result-draw {
-    border-left-color: #ffc107; /* 黄色 */
+    border-left-color: #ffc107; /* 黄色 (引き分け) */
 }
