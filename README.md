@@ -15,11 +15,11 @@
 
 ## 実装済みUI
 ### ログイン画面
-![ログイン画面](./image/login.png)
+![ログイン画面](./image/order.png)
 ### ホーム画面
 ![ホーム画面](./image/home.png)
 ### オーダー決定画面
-![ログイン画面](./image/order.png)
+![オーダー画面](./image/login.png)
 ### 試合進行画面
 ![試合進行画面](./image/schedule.png)
 
