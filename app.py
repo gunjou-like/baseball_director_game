@@ -43,9 +43,9 @@ def create_random_player_data(is_pitcher):
     if is_pitcher:
         # 投手成績: 奪三振率、与四球率、被打率
         stats = {
-            "strikeout_rate": random.uniform(7.0, 10.0),
-            "walk_rate": random.uniform(2.0, 4.0),
-            "batting_avg_allowed": random.uniform(0.220, 0.280),
+            "strikeout_rate": 0.0, #random.uniform(7.0, 10.0),
+            "walk_rate": 0.0, #random.uniform(2.0, 4.0),
+            "batting_avg_allowed": 0.0  #random.uniform(0.220, 0.280),
         }
         # 投手能力: 球威、制球、変化球
         abilities = {
@@ -56,9 +56,9 @@ def create_random_player_data(is_pitcher):
     else:
         # 野手成績: 打率、本塁打、盗塁
         stats = {
-            "batting_avg": random.uniform(0.250, 0.320),
-            "homeruns": random.randint(0, 30),
-            "steals": random.randint(0, 20),
+            "batting_avg": 0.000, # random.uniform(0.250, 0.320),
+            "homeruns": 0, #random.randint(0, 30),
+            "steals": 0, #random.randint(0, 20),
         }
         # 野手能力: ミート、パワー、スピード
         abilities = {
