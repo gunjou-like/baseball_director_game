@@ -45,7 +45,8 @@
 
 ### 未実装・実装予定・今後の拡張
 - AIバックエンドの追加
- 試験中()。
+ [試験中のリポジトリ](https://github.com/gunjou-like/baseball_ai_src)。
+ AI_ORDERとAI_STRATEGYの二つのAIエージェントを、Q-learningを使って学習させることを想定して準備を進めています。
  ![AI構成](./image/aifigure.png)
 - ペナントレースの試合スケジュール整備・順位表追加
 - 選手の年齢データ追加。若手選手の成長ロジック。
