@@ -1,6 +1,6 @@
 let isAuthenticated = false;
 let gameState = {
-    teams: null, // 全チームの選手リスト
+    teams: null, // 全チームの選手リスト（能力と成績を含む）
     schedule: [], // ユーザーの試合履歴
     current_order: { batters: [], pitcher: null } // ユーザーの保存済みオーダー
 };
@@ -19,25 +19,20 @@ const updateUI = (showGame) => {
     const navBar = document.querySelector('.nav-bar');
     const logoutBtn = document.getElementById('logout-btn');
 
+    // CSSのhiddenクラスを使用せず、直接スタイルを操作して表示を制御
     if (showGame) {
         // ゲーム画面を表示
-        gamePages.forEach(p => p.classList.remove('hidden'));
-        loginPage.classList.add('hidden');
-        navBar.classList.remove('hidden');
-        
-        // ★修正点: ログアウトボタンを再表示
-        if (logoutBtn) logoutBtn.style.display = 'block'; 
-        
+        gamePages.forEach(p => p.style.display = '');
+        loginPage.style.display = 'none';
+        navBar.style.display = '';
+        if (logoutBtn) logoutBtn.style.display = ''; // ログアウトボタン表示
         console.log("[UI] ゲーム画面を表示しました。");
     } else {
         // ログイン画面を表示
-        gamePages.forEach(p => p.classList.add('hidden'));
-        loginPage.classList.remove('hidden');
-        navBar.classList.add('hidden');
-        
-        // ★修正点: ログアウトボタンを非表示
-        if (logoutBtn) logoutBtn.style.display = 'none'; 
-        
+        gamePages.forEach(p => p.style.display = 'none');
+        loginPage.style.display = '';
+        navBar.style.display = 'none';
+        if (logoutBtn) logoutBtn.style.display = 'none'; // ログアウトボタン非表示
         console.log("[UI] ログイン画面を表示しました。");
     }
 };
@@ -170,10 +165,9 @@ const handleLogout = async () => {
  * 起動時の認証チェックとゲーム状態の初期ロード
  */
 const loadGameState = async () => {
-    // HEADリクエストで認証チェックとデータ取得を同時に行う
+    // /api/game_stateは認証必須
     console.log("[DATA] ゲーム状態をロード中...");
     
-    // /api/game_stateは認証必須
     const response = await safeFetch('/api/game_state', { method: 'GET' });
 
     if (response && response.ok) {
@@ -187,10 +181,8 @@ const loadGameState = async () => {
         isAuthenticated = true;
         console.log("[DATA] ゲーム状態のロード完了。", gameState);
         return true;
-    } else if (isAuthenticated) {
-        // 認証フラグは立っているがデータ取得に失敗した場合
-        console.error("[DATA ERROR] ゲームデータのロードに失敗しました。");
     }
+    // 認証失敗時やデータ取得失敗時は false
     return false;
 };
 
@@ -213,6 +205,20 @@ const renderOrderPage = () => {
     const batterPlayers = userTeamPlayers.filter(p => !p.is_pitcher);
     const pitcherPlayers = userTeamPlayers.filter(p => p.is_pitcher);
 
+    /**
+     * 野手の成績を整形するヘルパー関数
+     */
+    const formatBatterStats = (stats) => {
+        return `打率:${stats.batting_avg.toFixed(3)} | HR:${stats.homeruns} | 盗塁:${stats.steals}`;
+    };
+
+    /**
+     * 投手の成績を整形するヘルパー関数
+     */
+    const formatPitcherStats = (stats) => {
+        return `奪三振率:${stats.strikeout_rate.toFixed(2)} | 与四球率:${stats.walk_rate.toFixed(2)} | 被打率:${stats.batting_avg_allowed.toFixed(3)}`;
+    };
+
     // 打者スタメンのUIを動的に生成
     batterOrderContainer.innerHTML = '';
     for (let i = 1; i <= 9; i++) {
@@ -225,7 +231,10 @@ const renderOrderPage = () => {
         batterPlayers.forEach(player => {
             const option = document.createElement('option');
             option.value = player.id; 
-            option.textContent = `${player.name} (${player.id})`;
+            
+            // 成績情報をオプション名に追加
+            const statsText = formatBatterStats(player.stats);
+            option.textContent = `${player.name} (${player.id}) - ${statsText}`;
             
             // 以前保存されたオーダーを初期値として設定
             if (gameState.current_order.batters[i - 1] === player.id) {
@@ -247,7 +256,10 @@ const renderOrderPage = () => {
     pitcherPlayers.forEach(player => {
         const option = document.createElement('option');
         option.value = player.id;
-        option.textContent = `${player.name} (${player.id})`;
+        
+        // 成績情報をオプション名に追加
+        const statsText = formatPitcherStats(player.stats);
+        option.textContent = `${player.name} (${player.id}) - ${statsText}`;
         
         // 以前保存されたオーダーを初期値として設定
         if (gameState.current_order.pitcher === player.id) {
@@ -271,6 +283,8 @@ const renderSchedulePage = () => {
     
     if (gameState.schedule && gameState.schedule.length > 0) {
         // 最新の結果を上から表示
+        // リストをクリアし、最新の結果から逆順に表示
+        scheduleDisplay.innerHTML = '<h3>試合結果</h3>'; // リストのヘッダーを保持
         gameState.schedule.slice().reverse().forEach(result => {
             const li = document.createElement('li');
             li.textContent = `${result.home_team} vs ${result.away_team} - スコア: ${result.home_score} - ${result.away_score} (${result.result})`;
@@ -281,7 +295,7 @@ const renderSchedulePage = () => {
         scheduleDisplay.innerHTML += '<li>まだ試合がありません。</li>';
     }
 
-    rankingDisplay.innerHTML = '<li>順位データは後で実装します。</li>';
+    rankingDisplay.innerHTML = '<h3>リーグ順位</h3><li>順位データは後で実装します。</li>';
 };
 
 /**
@@ -291,6 +305,8 @@ const advanceDay = async () => {
     if (!isAuthenticated) return;
     console.log("[GAME] 1日進めます。試合結果を生成中...");
 
+    // オーダーが未決定の場合の処理をここに含めるべきだが、現在は省略
+
     const response = await safeFetch('/api/simulate_game', { method: 'GET' });
 
     if (response && response.ok) {
@@ -298,7 +314,8 @@ const advanceDay = async () => {
         console.log("[GAME] 試合結果をDBに記録しました。");
         
         // 最新のゲーム状態を再ロードしてUIを更新
-        await loadGameState();
+        // サーバーが試合結果と更新後の成績データを返すため、再ロードが必要
+        await loadGameState(); 
         renderSchedulePage(); // スケジュール画面を再描画
     } else {
         console.error("[GAME ERROR] 試合の進行中にエラーが発生しました。");
@@ -423,6 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         checkAuthAndShowPage('home-page');
     } else {
         console.log("[INIT] セッションが見つかりませんでした。");
+        // updateUI(false)はcheckAuthAndShowPage内で実行される
         checkAuthAndShowPage('login-page');
     }
 });
