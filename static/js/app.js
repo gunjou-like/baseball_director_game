@@ -193,15 +193,26 @@ const loadGameState = async () => {
 const renderOrderPage = () => {
     const batterOrderContainer = document.getElementById('batter-order-container');
     const pitcherSelectionContainer = document.getElementById('pitcher-selection-container');
-    const userTeamName = "自チーム (ベイカーズ)";
+    // *** 修正点: チーム名をapp.pyの新しい値に合わせる ***
+    const userTeamName = "自チーム (blue)"; 
     
     if (!gameState.teams) {
-        batterOrderContainer.innerHTML = '選手データをロード中...';
+        batterOrderContainer.innerHTML = 'エラー: 選手データをロードできませんでした。ログインとDB接続を確認してください。';
         pitcherSelectionContainer.innerHTML = '';
         return;
     }
 
+    // 取得したデータ内のキーを使用して選手リストを取得
     const userTeamPlayers = gameState.teams[userTeamName] || [];
+    
+    // データが見つからない場合の防御的なチェック
+    if (userTeamPlayers.length === 0) {
+        batterOrderContainer.innerHTML = `エラー: チーム名「${userTeamName}」の選手が見つかりません。DB設定を確認してください。`;
+        pitcherSelectionContainer.innerHTML = '';
+        return;
+    }
+
+
     const batterPlayers = userTeamPlayers.filter(p => !p.is_pitcher);
     const pitcherPlayers = userTeamPlayers.filter(p => p.is_pitcher);
 
